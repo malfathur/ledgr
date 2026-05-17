@@ -1,0 +1,43 @@
+# deps
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+/dist
+
+# env
+.env
+.env.local
+.env*.local
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# local
+.DS_Store
+*.pem
+*.db
+*.tsbuildinfo
+next-env.d.ts
+
+# internal docs (gitignored — only README.md, CHANGELOG.md, and MANUAL.md are public)
+*.md
+!README.md
+!CHANGELOG.md
+!MANUAL.md
+
+# claude / editor internals
+.claude/
+
+# dev scripts
+wipe-categories.js
