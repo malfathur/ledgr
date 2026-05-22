@@ -101,6 +101,9 @@ export default function DashboardClient({
             totalIncome={totalIncome}
             totalSpending={totalSpending}
             expenseNodes={expenseGroups}
+            transactions={transactions}
+            month={month}
+            year={year}
           />
         }
         topRight={
