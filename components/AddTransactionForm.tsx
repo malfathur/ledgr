@@ -23,37 +23,11 @@ type Props = {
 export default function AddTransactionForm({ categories, today, budgetMap, spentMap, defaultCategory }: Props) {
   const router = useRouter();
 
-  // Build helpers (computed before state so lazy init can use them)
   const byId = Object.fromEntries(categories.map((c) => [c.id, c]));
   const childrenOf = (pid: number | null) => categories.filter((c) => c.parent_id === pid);
   const isLeaf = (id: number) => childrenOf(id).length === 0;
   const leaves = categories.filter((c) => isLeaf(c.id));
 
-  const [categoryId, setCategoryId] = useState(() => {
-    if (!defaultCategory) return "";
-    const match = leaves.find((l) => l.slug === defaultCategory);
-    return match ? String(match.id) : "";
-  });
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [date, setDate] = useState(today);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  // Build display path for a leaf: "Income > Salary"
-  function path(cat: Category): string {
-    const parts: string[] = [cat.name];
-    let cur = cat;
-    while (cur.parent_id !== null) {
-      const parent = byId[cur.parent_id];
-      if (!parent) break;
-      parts.unshift(parent.name);
-      cur = parent;
-    }
-    return parts.join(" › ");
-  }
-
-  // Group leaves by top-level root for optgroups
   function rootOf(cat: Category): Category {
     let cur = cat;
     while (cur.parent_id !== null) {
@@ -64,10 +38,57 @@ export default function AddTransactionForm({ categories, today, budgetMap, spent
     return cur;
   }
 
+  const [categoryId, setCategoryId] = useState(() => {
+    if (!defaultCategory) return "";
+    const match = leaves.find((l) => l.slug === defaultCategory);
+    return match ? String(match.id) : "";
+  });
+  const [rootId, setRootId] = useState(() => {
+    if (!defaultCategory) return "";
+    const match = leaves.find((l) => l.slug === defaultCategory);
+    if (!match) return "";
+    return String(rootOf(match).id);
+  });
+  const [midId, setMidId] = useState(() => {
+    if (!defaultCategory) return "";
+    const match = leaves.find((l) => l.slug === defaultCategory);
+    if (!match || match.parent_id === null) return "";
+    const parent = byId[match.parent_id];
+    if (!parent || parent.parent_id === null) return "";
+    return String(parent.id);
+  });
+  const [step, setStep] = useState(() => {
+    if (!defaultCategory) return 1;
+    const match = leaves.find((l) => l.slug === defaultCategory);
+    if (!match) return 1;
+    const parent = match.parent_id !== null ? byId[match.parent_id] : null;
+    return parent && parent.parent_id !== null ? 3 : 2;
+  });
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(today);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
   const roots = categories.filter((c) => c.parent_id === null);
-  const leavesByRoot = Object.fromEntries(
-    roots.map((r) => [r.id, leaves.filter((l) => rootOf(l).id === r.id)])
-  );
+
+  const currentRootChildren = rootId ? childrenOf(Number(rootId)) : [];
+  const isDirectLeafRoot = currentRootChildren.length > 0 && currentRootChildren.every((c) => isLeaf(c.id));
+  const stepLabels = isDirectLeafRoot ? ["Type", "Category"] : ["Type", "Group", "Category"];
+
+  function handleRootPick(id: string) {
+    setRootId(id); setMidId(""); setCategoryId("");
+    setTimeout(() => setStep(2), 120);
+  }
+  function handleMidPick(id: string) {
+    setMidId(id); setCategoryId("");
+    setTimeout(() => setStep(3), 120);
+  }
+  function goBack() {
+    if (step === 2) { setRootId(""); setMidId(""); setCategoryId(""); setStep(1); }
+    else if (step === 3 && isDirectLeafRoot) { setCategoryId(""); setStep(2); }
+    else if (step === 3) { setMidId(""); setCategoryId(""); setStep(2); }
+  }
 
   function categoryBalanceHint() {
     if (!categoryId) return null;
@@ -87,7 +108,8 @@ export default function AddTransactionForm({ categories, today, budgetMap, spent
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!categoryId || !amount || !date) return;
+    if (!categoryId) { setError("Please select a category."); return; }
+    if (!amount) { setError("Please enter an amount."); return; }
     setSaving(true);
     setError("");
 
@@ -104,7 +126,10 @@ export default function AddTransactionForm({ categories, today, budgetMap, spent
 
     setSaving(false);
     if (res.ok) {
-      router.push("/");
+      const [txYear, txMonth] = date.split("-").map(Number);
+      const now = new Date();
+      const isCurrentMonth = txMonth === now.getMonth() + 1 && txYear === now.getFullYear();
+      router.push(isCurrentMonth ? "/" : `/history?month=${txMonth}&year=${txYear}`);
       router.refresh();
     } else {
       setError("Failed to save. Please try again.");
@@ -125,30 +150,94 @@ export default function AddTransactionForm({ categories, today, budgetMap, spent
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {/* Category */}
-        <div className="flex flex-col gap-1">
+        {/* Category — step wizard */}
+        <div className="flex flex-col gap-4">
           <label className="text-sm text-gray-400">Category</label>
-          <select
-            required
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="rounded-lg bg-gray-800 px-4 py-3 text-base outline-none ring-1 ring-gray-700 focus:ring-indigo-500"
-          >
-            <option value="">Select category…</option>
-            {roots.map((root) =>
-              leavesByRoot[root.id]?.length ? (
-                <optgroup key={root.id} label={root.name}>
-                  {leavesByRoot[root.id].map((leaf) => (
-                    <option key={leaf.id} value={leaf.id}>
-                      {path(leaf)}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null
-            )}
-          </select>
+
+          {/* Context crumb + back */}
+          {step > 1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={goBack} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                ← Back
+              </button>
+              <span className="text-xs text-gray-600">
+                {byId[Number(rootId)]?.name}
+                {midId ? ` › ${byId[Number(midId)]?.name}` : ""}
+              </span>
+            </div>
+          )}
+
+          {/* Step 1: root */}
+          {step === 1 && (
+            <div className="flex flex-col gap-2">
+              {roots.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => handleRootPick(String(r.id))}
+                  className={`w-full rounded-lg px-4 py-3 text-sm text-left font-medium transition-colors ring-1 ${
+                    rootId === String(r.id)
+                      ? "bg-indigo-600/20 ring-indigo-500 text-indigo-300"
+                      : "bg-gray-800 ring-gray-700 text-gray-200 hover:bg-gray-700"
+                  }`}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Step 2: groups (Bills) or leaves (Income) */}
+          {step === 2 && (
+            <div className="flex flex-col gap-2">
+              {currentRootChildren.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    if (isDirectLeafRoot) { setCategoryId(String(c.id)); setStep(3); }
+                    else handleMidPick(String(c.id));
+                  }}
+                  className={`w-full rounded-lg px-4 py-3 text-sm text-left font-medium transition-colors ring-1 ${
+                    (isDirectLeafRoot ? categoryId : midId) === String(c.id)
+                      ? "bg-indigo-600/20 ring-indigo-500 text-indigo-300"
+                      : "bg-gray-800 ring-gray-700 text-gray-200 hover:bg-gray-700"
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Step 3: leaves under group (Bills) or confirmation (Income) */}
+          {step === 3 && isDirectLeafRoot && categoryId && (
+            <div className="rounded-lg bg-indigo-600/10 ring-1 ring-indigo-500 px-4 py-3">
+              <p className="text-sm text-indigo-300 font-medium">{byId[Number(categoryId)]?.name}</p>
+              <p className="text-xs text-gray-500 mt-0.5">Category selected — fill in amount and date below</p>
+            </div>
+          )}
+          {step === 3 && !isDirectLeafRoot && (
+            <div className="flex flex-col gap-2">
+              {childrenOf(Number(midId)).map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategoryId(String(c.id))}
+                  className={`w-full rounded-lg px-4 py-3 text-sm text-left font-medium transition-colors ring-1 ${
+                    categoryId === String(c.id)
+                      ? "bg-indigo-600/20 ring-indigo-500 text-indigo-300"
+                      : "bg-gray-800 ring-gray-700 text-gray-200 hover:bg-gray-700"
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {hint && (
-            <p className={`text-xs mt-1 ${hint.over ? "text-red-400" : "text-gray-500"}`}>
+            <p className={`text-xs ${hint.over ? "text-red-400" : "text-gray-500"}`}>
               {hint.over
                 ? `Over budget by RM ${Math.abs(hint.remaining).toFixed(2)} (budget: RM ${hint.total.toFixed(2)})`
                 : hint.label === "Received"
