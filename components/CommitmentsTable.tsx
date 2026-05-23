@@ -7,6 +7,7 @@ import { fmtRM } from "@/lib/fmt";
 type Props = {
   initialCommitments: Commitment[];
   initialPaidIds: number[];
+  isPreview?: boolean;
 };
 
 function getDueStatus(dueDay: number, paid: boolean): "paid" | "overdue" | "soon" | "ok" {
@@ -27,7 +28,7 @@ function DueLabel({ day, paid }: { day: number; paid: boolean }) {
   return <span className={`text-xs tabular-nums ${color}`}>Day {day}</span>;
 }
 
-export default function CommitmentsTable({ initialCommitments, initialPaidIds }: Props) {
+export default function CommitmentsTable({ initialCommitments, initialPaidIds, isPreview = false }: Props) {
   const [commitments] = useState<Commitment[]>(initialCommitments);
   const [paidIds, setPaidIds] = useState<Set<number>>(new Set(initialPaidIds));
   const [busy, setBusy] = useState<number | null>(null);
@@ -80,9 +81,9 @@ export default function CommitmentsTable({ initialCommitments, initialPaidIds }:
                     <td className="py-2.5 text-right">
                       {!isPaid && (
                         <button
-                          onClick={() => handlePay(c.id)}
-                          disabled={busy === c.id}
-                          className="rounded bg-emerald-700/40 px-2 py-0.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-700/60 disabled:opacity-50"
+                          onClick={() => !isPreview && handlePay(c.id)}
+                          disabled={isPreview || busy === c.id}
+                          className="rounded bg-emerald-700/40 px-2 py-0.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-700/60 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {busy === c.id ? "…" : "Paid"}
                         </button>

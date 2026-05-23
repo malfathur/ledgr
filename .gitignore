@@ -54,3 +54,7 @@ node_modules/
 # npm/build artifacts
 playwright
 ledgr@*
+
+# presentation prep
+ledgr-presentation.html
+dashboard.png

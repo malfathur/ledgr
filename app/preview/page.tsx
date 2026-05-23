@@ -196,6 +196,7 @@ export default function PreviewPage() {
         year={2026}
         budgetIsSet={true}
         isAdmin={false}
+        isPreview={true}
       />
     </main>
   );

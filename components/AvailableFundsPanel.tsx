@@ -175,14 +175,15 @@ export default function AvailableFundsPanel({
     if (!colorMap[group.id]) continue;
     const daily = groupDailySpend[group.id] ?? {};
     const points: Point[] = [];
-    let c = 0;
+    let seriesMax = 0;
     for (let d = 1; d <= todayDay; d++) {
-      c += daily[d] ?? 0;
-      points.push({ day: d, cum: c });
+      const v = daily[d] ?? 0;
+      points.push({ day: d, cum: v });
+      if (v > seriesMax) seriesMax = v;
     }
-    if (c > 0) {
+    if (seriesMax > 0) {
       seriesMap[group.id] = points;
-      if (c > maxCum) maxCum = c;
+      if (seriesMax > maxCum) maxCum = seriesMax;
     }
   }
 
@@ -194,7 +195,7 @@ export default function AvailableFundsPanel({
   // ── Axis ticks (nice numbers) ─────────────────────────────
   // Y — scale to the max of currently VISIBLE series so hiding a line rescales the axis
   const visibleMaxCum = visibleSeries.reduce(
-    (m, [, pts]) => Math.max(m, pts[pts.length - 1]?.cum ?? 0),
+    (m, [, pts]) => Math.max(m, ...pts.map((p) => p.cum)),
     0
   );
   const yTickValues  = niceTicks(0, visibleMaxCum > 0 ? visibleMaxCum : maxCum > 0 ? maxCum : 100, 5);

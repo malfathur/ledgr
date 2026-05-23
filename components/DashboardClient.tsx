@@ -25,6 +25,7 @@ type Props = {
   year: number;
   budgetIsSet: boolean;
   isAdmin: boolean;
+  isPreview?: boolean;
 };
 
 export default function DashboardClient({
@@ -38,6 +39,7 @@ export default function DashboardClient({
   year,
   budgetIsSet,
   isAdmin,
+  isPreview = false,
 }: Props) {
   const [selectedNode, setSelectedNode] = useState<CategoryNode | null>(null);
 
@@ -73,6 +75,7 @@ export default function DashboardClient({
       </a>
       <button
         onClick={async () => {
+          if (isPreview) return;
           await fetch("/api/auth/logout", { method: "POST" });
           window.location.href = "/login";
         }}
@@ -116,7 +119,7 @@ export default function DashboardClient({
             />
           </div>
         }
-        bottomLeft={<CommitmentsTable initialCommitments={commitments} initialPaidIds={paidIds} />}
+        bottomLeft={<CommitmentsTable initialCommitments={commitments} initialPaidIds={paidIds} isPreview={isPreview} />}
         bottomRight={<AlertsPanel alerts={alerts} />}
         nav={nav}
       />
