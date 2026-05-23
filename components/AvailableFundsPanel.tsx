@@ -89,11 +89,20 @@ export default function AvailableFundsPanel({
   const [mode, setMode]                 = useState<"overview" | "breakdown">("overview");
   const [mounted, setMounted]           = useState(false);
   const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(new Set());
+  const [subView, setSubView]           = useState<"list" | "chart">("list");
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  function handleDonutClick() {
+    if (!canBreakdown) return;
+    setMode((m) => {
+      if (m === "breakdown") setSubView("list");
+      return m === "overview" ? "breakdown" : "overview";
+    });
+  }
 
   function toggleGroup(id: number) {
     setHiddenGroups((prev) => {
@@ -142,12 +151,6 @@ export default function AvailableFundsPanel({
     ? fmtRM(totalSpending)
     : `${availableFunds < 0 ? "−" : ""}${fmtRM(Math.abs(availableFunds))}`;
   const labelColor = isBreakdown ? "#ffffff" : availableFunds >= 0 ? "#34d399" : "#fb7185";
-
-  // ── List sizing ─────────────────────────────────────────────
-  const n     = listItems.length || 1;
-  const rows  = Math.ceil(n / 2);
-  const fs    = Math.max(9, Math.min(14, Math.floor(56 / rows)));
-  const dotPx = Math.max(5, Math.min(8, fs - 4));
 
   // ── Chart data ──────────────────────────────────────────────
   const daysInMonth    = new Date(year, month, 0).getDate();
@@ -252,7 +255,7 @@ export default function AvailableFundsPanel({
           willChange: "width",
           cursor: canBreakdown ? "pointer" : "default",
         }}
-        onClick={() => canBreakdown && setMode((m) => m === "overview" ? "breakdown" : "overview")}
+        onClick={handleDonutClick}
       >
         <svg viewBox={`0 0 ${VB} ${VB}`} width="100%" height="100%" style={{ display: "block" }}>
           <circle cx={CX} cy={CY} r={R} fill="none" stroke="#1f2937" strokeWidth={SW} />
@@ -322,56 +325,123 @@ export default function AvailableFundsPanel({
           pointerEvents: isBreakdown ? "auto" : "none",
         }}
       >
-        {/* 4+4 toggle grid */}
-        <ul
-          className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 pl-5 pr-2 pt-2"
-          style={{ gridAutoFlow: "column", gridTemplateRows: `repeat(${rows}, auto)` }}
-        >
-          {listItems.map((item) => {
-            const color    = colorMap[item.id];
-            const hasSpend = item.actual > 0;
-            const hidden   = hiddenGroups.has(item.id);
-            return (
-              <li
-                key={item.id}
-                className="flex min-w-0 items-center gap-1.5 rounded transition-opacity"
-                style={{ cursor: hasSpend ? "pointer" : "default", opacity: hasSpend && hidden ? 0.3 : 1 }}
-                onClick={() => hasSpend && toggleGroup(item.id)}
+        {/* List sub-view */}
+        {subView === "list" && (
+          <>
+            <div
+              className="flex-1 flex items-center overflow-y-auto py-2"
+              style={{ paddingLeft: "29px", paddingRight: "29px" }}
+            >
+            <div
+              className="w-full rounded-lg p-3"
+              style={{
+                background: "#1e293b",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 12px rgba(0,0,0,0.4)",
+              }}
+            >
+<ul
+              className="grid grid-cols-2 gap-x-6 gap-y-2"
+            >
+              {listItems.map((item) => {
+                const color    = colorMap[item.id];
+                const hasSpend = item.actual > 0;
+                const hidden   = hiddenGroups.has(item.id);
+                return (
+                  <li
+                    key={item.id}
+                    className="flex min-w-0 items-center gap-2 rounded transition-opacity"
+                    style={{ cursor: hasSpend ? "pointer" : "default", opacity: hasSpend && hidden ? 0.3 : 1 }}
+                    onClick={() => hasSpend && toggleGroup(item.id)}
+                  >
+                    <span
+                      className="shrink-0 rounded-full transition-all"
+                      style={{
+                        background: hasSpend && !hidden ? color : "transparent",
+                        border: `1.5px solid ${hasSpend ? color : "#374151"}`,
+                        width: 8,
+                        height: 8,
+                      }}
+                    />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate" style={{ fontSize: 11, color: hasSpend ? "#9ca3af" : "#4b5563" }}>
+                        {item.name}
+                      </span>
+                      <span
+                        className="font-semibold tabular-nums"
+                        style={{
+                          fontSize: 12,
+                          color: hasSpend ? "#e5e7eb" : "#6b7280",
+                          textDecoration: hidden ? "line-through" : "none",
+                        }}
+                      >
+                        {fmtRM(item.actual)}
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            </div>
+            </div>
+            <div className="shrink-0 flex justify-center py-2" style={{ paddingLeft: "29px", paddingRight: "29px" }}>
+              <button
+                onClick={() => setSubView("chart")}
+                disabled={!hasChartData}
+                className="flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors"
+                style={{
+                  background: hasChartData ? "#1e293b" : "#0f172a",
+                  color: hasChartData ? "#94a3b8" : "#374151",
+                  cursor: hasChartData ? "pointer" : "not-allowed",
+                  border: "1px solid #334155",
+                }}
               >
-                <span
-                  className="shrink-0 rounded-full transition-all"
-                  style={{
-                    background: hasSpend && !hidden ? color : "transparent",
-                    border: `1.5px solid ${hasSpend ? color : "#374151"}`,
-                    width: dotPx,
-                    height: dotPx,
-                  }}
-                />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate" style={{ fontSize: fs - 2, color: hasSpend ? "#9ca3af" : "#4b5563" }}>
-                    {item.name}
-                  </span>
-                  <span
-                    className="font-medium tabular-nums"
+                Spend Trend
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Chart sub-view */}
+        {subView === "chart" && (
+          <>
+            {/* Compact legend — click to toggle series */}
+            <div className="shrink-0 flex flex-wrap gap-x-3 gap-y-0.5 pl-4 pr-2 pt-1.5 pb-0.5">
+              {listItems.map((item) => {
+                const color    = colorMap[item.id];
+                const hasSpend = item.actual > 0;
+                const hidden   = hiddenGroups.has(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => hasSpend && toggleGroup(item.id)}
+                    className="flex items-center gap-1 transition-opacity"
                     style={{
-                      fontSize: fs - 1,
-                      color: hasSpend ? "#e5e7eb" : "#6b7280",
-                      textDecoration: hidden ? "line-through" : "none",
+                      opacity: hasSpend ? (hidden ? 0.3 : 1) : 0.35,
+                      cursor: hasSpend ? "pointer" : "default",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
                     }}
                   >
-                    {fmtRM(item.actual)}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                    <span
+                      className="shrink-0 rounded-full transition-all"
+                      style={{
+                        background: hasSpend && !hidden ? color : "transparent",
+                        border: `1.5px solid ${hasSpend ? color : "#374151"}`,
+                        width: 6,
+                        height: 6,
+                      }}
+                    />
+                    <span style={{ fontSize: 9, color: hasSpend ? "#9ca3af" : "#4b5563" }}>
+                      {item.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Divider */}
-        <div className="mx-4 my-1.5 shrink-0 border-t border-gray-800" />
-
-        {/* Chart — centred in remaining space, slight left shift to offset y-label visual weight */}
-        <div className="flex min-h-0 flex-1 items-center justify-center pl-0 pr-3 py-0">
+            {/* Chart */}
+            <div className="flex min-h-0 flex-1 items-center justify-center pl-0 pr-3 py-0">
           <svg
             viewBox={`0 0 ${CVB_W} ${CVB_H}`}
             width="100%"
@@ -541,6 +611,19 @@ export default function AvailableFundsPanel({
             )}
           </svg>
         </div>
+
+            {/* Back to breakdown */}
+            <div className="shrink-0 flex justify-center py-1">
+              <button
+                onClick={() => setSubView("list")}
+                className="text-xs"
+                style={{ color: "#4b5563", background: "none", border: "none", cursor: "pointer" }}
+              >
+                back to breakdown
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
     </div>
