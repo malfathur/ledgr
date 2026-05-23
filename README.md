@@ -10,6 +10,8 @@ I designed the feature scope and data model, used Claude to generate implementat
 
 Once deployed, see **[MANUAL.md](./MANUAL.md)** for a full guide on using the app.
 
+Preview at https://ledgr-m27h.onrender.com/preview!
+
 ---
 
 ## What it does
