@@ -6,6 +6,13 @@ Format: [Semantic Versioning](https://semver.org/). Structure: `Added / Fixed / 
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- `middleware.ts` bypassed auth header injection for all `/api/auth/*` routes — narrowed to `/api/auth/login` only; `PATCH /api/auth/password` now correctly receives `x-user-id` header
+
+---
+
 ## v2.0.3 — 2026-05-17
 
 ### Fixed
