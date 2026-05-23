@@ -90,6 +90,8 @@ export default function AvailableFundsPanel({
   const [mounted, setMounted]           = useState(false);
   const [hiddenGroups, setHiddenGroups] = useState<Set<number>>(new Set());
   const [subView, setSubView]           = useState<"list" | "chart">("list");
+  const [hoveredDay, setHoveredDay]     = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos]     = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -102,6 +104,23 @@ export default function AvailableFundsPanel({
       if (m === "breakdown") setSubView("list");
       return m === "overview" ? "breakdown" : "overview";
     });
+  }
+
+  function closeChart() {
+    setSubView("list");
+    setHoveredDay(null);
+  }
+
+  function handleChartMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect  = e.currentTarget.getBoundingClientRect();
+    const relX  = e.clientX - rect.left;
+    const relY  = e.clientY - rect.top;
+    const scale = Math.min(rect.width / CVB_W, rect.height / CVB_H);
+    const svgX  = (relX - (rect.width - CVB_W * scale) / 2) / scale;
+    const rawDay = 1 + ((svgX - CL) / CHART_W) * (daysInMonth - 1);
+    const day   = Math.max(1, Math.min(todayDay, Math.round(rawDay)));
+    setHoveredDay(day);
+    setTooltipPos({ x: relX, y: relY });
   }
 
   function toggleGroup(id: number) {
@@ -160,6 +179,7 @@ export default function AvailableFundsPanel({
 
   const expenseGroupIds = new Set(expenseNodes.map((nd) => nd.id));
 
+  // Group-level daily spend — drives the chart lines
   const groupDailySpend: Record<number, Record<number, number>> = {};
   for (const t of transactions) {
     if (!t.parent_id || !expenseGroupIds.has(t.parent_id)) continue;
@@ -167,6 +187,16 @@ export default function AvailableFundsPanel({
     if (!groupDailySpend[t.parent_id]) groupDailySpend[t.parent_id] = {};
     groupDailySpend[t.parent_id][day] =
       (groupDailySpend[t.parent_id][day] ?? 0) + t.amount;
+  }
+
+  // Leaf-level daily spend — tooltip breakdown only
+  const leafDailySpend: Record<number, Record<number, number>> = {};
+  for (const t of transactions) {
+    if (!t.parent_id || !expenseGroupIds.has(t.parent_id)) continue;
+    const day = parseInt(t.date.split("-")[2], 10);
+    if (!leafDailySpend[t.category_id]) leafDailySpend[t.category_id] = {};
+    leafDailySpend[t.category_id][day] =
+      (leafDailySpend[t.category_id][day] ?? 0) + t.amount;
   }
 
   const seriesMap: Record<number, Point[]> = {};
@@ -402,47 +432,8 @@ export default function AvailableFundsPanel({
           </>
         )}
 
-        {/* Chart sub-view */}
         {subView === "chart" && (
-          <>
-            {/* Compact legend — click to toggle series */}
-            <div className="shrink-0 flex flex-wrap gap-x-3 gap-y-0.5 pl-4 pr-2 pt-1.5 pb-0.5">
-              {listItems.map((item) => {
-                const color    = colorMap[item.id];
-                const hasSpend = item.actual > 0;
-                const hidden   = hiddenGroups.has(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => hasSpend && toggleGroup(item.id)}
-                    className="flex items-center gap-1 transition-opacity"
-                    style={{
-                      opacity: hasSpend ? (hidden ? 0.3 : 1) : 0.35,
-                      cursor: hasSpend ? "pointer" : "default",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                    }}
-                  >
-                    <span
-                      className="shrink-0 rounded-full transition-all"
-                      style={{
-                        background: hasSpend && !hidden ? color : "transparent",
-                        border: `1.5px solid ${hasSpend ? color : "#374151"}`,
-                        width: 6,
-                        height: 6,
-                      }}
-                    />
-                    <span style={{ fontSize: 9, color: hasSpend ? "#9ca3af" : "#4b5563" }}>
-                      {item.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Chart */}
-            <div className="flex min-h-0 flex-1 items-center justify-center pl-0 pr-3 py-0">
+          <div className="flex min-h-0 flex-1 items-center justify-center pl-0 pr-3 py-0">
           <svg
             viewBox={`0 0 ${CVB_W} ${CVB_H}`}
             width="100%"
@@ -612,20 +603,221 @@ export default function AvailableFundsPanel({
             )}
           </svg>
         </div>
-
-            {/* Back to breakdown */}
-            <div className="shrink-0 flex justify-center py-1">
-              <button
-                onClick={() => setSubView("list")}
-                className="text-xs"
-                style={{ color: "#4b5563", background: "none", border: "none", cursor: "pointer" }}
-              >
-                back to breakdown
-              </button>
-            </div>
-          </>
         )}
       </div>
+
+      {/* ── Full-panel chart overlay ───────────────────────── */}
+      {isBreakdown && subView === "chart" && (
+        <div className="absolute inset-0 flex flex-col" style={{ background: "#0f172a", zIndex: 10 }}>
+
+          {/* Header: legend + close */}
+          <div className="shrink-0 flex items-center justify-between pl-4 pr-2 pt-2 pb-1">
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              {listItems.map((item) => {
+                const color  = colorMap[item.id];
+                const hidden = hiddenGroups.has(item.id);
+                if (!color) return null;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleGroup(item.id)}
+                    className="flex items-center gap-1"
+                    style={{
+                      opacity: hidden ? 0.3 : 1,
+                      cursor: "pointer",
+                      background: "none", border: "none", padding: 0,
+                    }}
+                  >
+                    <span className="shrink-0 rounded-full" style={{
+                      background: hidden ? "transparent" : color,
+                      border: `1.5px solid ${color}`,
+                      width: 6, height: 6,
+                    }} />
+                    <span style={{ fontSize: 9, color: "#9ca3af" }}>{item.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={closeChart}
+              style={{ color: "#6b7280", background: "none", border: "none", cursor: "pointer", fontSize: 14, lineHeight: 1, paddingLeft: 8 }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Chart with hover */}
+          <div
+            className="relative flex min-h-0 flex-1 pl-1 pr-3 pb-2"
+            onMouseMove={handleChartMouseMove}
+            onMouseLeave={() => setHoveredDay(null)}
+          >
+            <svg
+              viewBox={`0 0 ${CVB_W} ${CVB_H}`}
+              width="100%" height="100%"
+              preserveAspectRatio="xMidYMid meet"
+              style={{ display: "block", overflow: "visible" }}
+            >
+              <defs>
+                {Object.keys(seriesMap).map((gid) => {
+                  const color = colorMap[parseInt(gid, 10)];
+                  return (
+                    <linearGradient key={gid} id={`afp-fp-grad-${gid}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor={color} stopOpacity="0.2" />
+                      <stop offset="100%" stopColor={color} stopOpacity="0" />
+                    </linearGradient>
+                  );
+                })}
+                <linearGradient id="afp-fp-future" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"   stopColor="#0f172a" stopOpacity="0" />
+                  <stop offset="100%" stopColor="#0f172a" stopOpacity="0.55" />
+                </linearGradient>
+              </defs>
+
+              {yTickValues.map((v) => {
+                const y      = yOf(v);
+                const isZero = v === 0;
+                return (
+                  <g key={v}>
+                    <line x1={CL} y1={y} x2={CL + CHART_W} y2={y}
+                      stroke={isZero ? "#374151" : "#1e293b"}
+                      strokeWidth={isZero ? "0.9" : "0.4"}
+                      strokeDasharray={isZero ? "none" : "2 3"}
+                    />
+                    <line x1={CL - 3} y1={y} x2={CL} y2={y} stroke="#374151" strokeWidth="0.7" />
+                    <text x={CL - 5} y={y} textAnchor="end" dominantBaseline="middle" fontSize="5" fill="#6b7280">
+                      {fmtAxisVal(v, maxTickLabel)}
+                    </text>
+                  </g>
+                );
+              })}
+
+              <line x1={CL} y1={CT} x2={CL} y2={baselineY} stroke="#374151" strokeWidth="0.9" />
+              <text x={5} y={CT + CHART_H / 2} textAnchor="middle" dominantBaseline="middle"
+                fontSize="4.5" fill="#4b5563" letterSpacing="0.5"
+                transform={`rotate(-90, 5, ${CT + CHART_H / 2})`}>RM</text>
+
+              {xTickDays.map((d) => {
+                const x = xOf(d);
+                return (
+                  <g key={d}>
+                    <line x1={x} y1={baselineY} x2={x} y2={baselineY + 3} stroke="#374151" strokeWidth="0.7" />
+                    <text x={x} y={CVB_H - 5} textAnchor="middle" fontSize="5" fill="#6b7280">{d}</text>
+                  </g>
+                );
+              })}
+
+              <line x1={CL} y1={baselineY} x2={CL + CHART_W} y2={baselineY} stroke="#374151" strokeWidth="0.9" />
+              <text x={CL + CHART_W / 2} y={CVB_H - 1} textAnchor="middle" fontSize="4.5" fill="#4b5563" letterSpacing="0.5">
+                {monthLabel}
+              </text>
+
+              {visibleSeries.map(([gid, pts]) => (
+                <path key={`fp-area-${gid}`} d={areaPath(pts)} fill={`url(#afp-fp-grad-${gid})`} />
+              ))}
+
+              {visibleSeries.map(([gid, pts]) => {
+                const color = colorMap[parseInt(gid, 10)];
+                return (
+                  <path key={`fp-line-${gid}`} d={linePath(pts)} fill="none"
+                    stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"
+                  />
+                );
+              })}
+
+              {visibleSeries.map(([gid, pts]) => {
+                const color = colorMap[parseInt(gid, 10)];
+                const last  = pts[pts.length - 1];
+                return (
+                  <circle key={`fp-dot-${gid}`} cx={xOf(last.day)} cy={yOf(last.cum)}
+                    r="1.8" fill={color} stroke="#0f172a" strokeWidth="0.8"
+                  />
+                );
+              })}
+
+              {isCurrentMonth && todayDay < daysInMonth && (
+                <rect x={todayX} y={CT} width={xOf(daysInMonth) - todayX} height={CHART_H} fill="url(#afp-fp-future)" />
+              )}
+
+              {isCurrentMonth && (
+                <>
+                  <line x1={todayX} y1={CT} x2={todayX} y2={baselineY} stroke="#4b5563" strokeWidth="0.8" strokeDasharray="2.5 2" />
+                  <text x={todayX} y={CT - 4} textAnchor="middle" fontSize="4.5" fill="#6b7280">today</text>
+                </>
+              )}
+
+              {/* Hover crosshair */}
+              {hoveredDay !== null && (
+                <line
+                  x1={xOf(hoveredDay)} y1={CT} x2={xOf(hoveredDay)} y2={baselineY}
+                  stroke="#94a3b8" strokeWidth="0.7" strokeDasharray="2 2"
+                />
+              )}
+
+              {!hasChartData && (
+                <text x={CL + CHART_W / 2} y={CT + CHART_H / 2}
+                  textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="#1e293b" letterSpacing="1">
+                  no spend this month
+                </text>
+              )}
+            </svg>
+
+            {/* Hover tooltip */}
+            {hoveredDay !== null && (() => {
+              const entries = visibleSeries
+                .map(([gid, pts]) => {
+                  const groupId = parseInt(gid, 10);
+                  const group   = expenseNodes.find((n) => n.id === groupId);
+                  const val     = pts.find((p) => p.day === hoveredDay)?.cum ?? 0;
+                  const leaves  = (group?.children ?? [])
+                    .map((l) => ({ name: l.name, val: leafDailySpend[l.id]?.[hoveredDay!] ?? 0 }))
+                    .filter((l) => l.val > 0);
+                  return { color: colorMap[groupId], name: group?.name ?? "", val, leaves };
+                })
+                .filter((e) => e.val > 0);
+
+              return (
+                <div
+                  className="pointer-events-none absolute rounded"
+                  style={{
+                    left: tooltipPos.x + 14,
+                    top: Math.max(4, tooltipPos.y - 20),
+                    background: "rgba(15,23,42,0.95)",
+                    border: "1px solid #1e293b",
+                    padding: "5px 8px",
+                    zIndex: 20,
+                    minWidth: 110,
+                  }}
+                >
+                  <div style={{ fontSize: 9, color: "#6b7280", marginBottom: 4 }}>
+                    {MONTHS_SHORT[month - 1]} {hoveredDay}
+                  </div>
+                  {entries.length === 0 ? (
+                    <div style={{ fontSize: 10, color: "#374151" }}>no spend</div>
+                  ) : (
+                    entries.map((e) => (
+                      <div key={e.name} style={{ marginBottom: e.leaves.length ? 3 : 1 }}>
+                        <div className="flex items-center gap-1.5" style={{ fontSize: 10, color: "#e5e7eb" }}>
+                          <span className="shrink-0 rounded-full" style={{ background: e.color, width: 5, height: 5 }} />
+                          <span style={{ color: "#c4c4c4", fontSize: 10 }}>{e.name}</span>
+                          <span className="tabular-nums" style={{ marginLeft: "auto", paddingLeft: 8 }}>{fmtRM(e.val)}</span>
+                        </div>
+                        {e.leaves.map((l) => (
+                          <div key={l.name} className="flex items-center" style={{ paddingLeft: 10, fontSize: 9, color: "#6b7280" }}>
+                            <span style={{ marginRight: 4 }}>·</span>
+                            <span>{l.name}</span>
+                            <span className="tabular-nums" style={{ marginLeft: "auto", paddingLeft: 8 }}>{fmtRM(l.val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
     </div>
   );
