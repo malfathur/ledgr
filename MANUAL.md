@@ -26,6 +26,17 @@ The dashboard is split into four panels:
 
 The centre of the donut shows **available funds** (income minus spending). It turns red if you've spent more than you earned.
 
+### Breakdown mode
+
+Tapping the donut switches to **breakdown mode**. The right side shows a list of expense groups with their spend for the month — tap any row to hide or show that group.
+
+At the bottom of the list is a **Spend Trend** button (enabled once you have transactions). Tapping it opens a full-screen chart overlay:
+
+- Each line represents a category group's **daily spend** for the month
+- The legend at the top lets you hide/show individual groups
+- **Hover** over the chart to see a tooltip with the group total and a breakdown of each sub-category that had spend on that day
+- Tap **✕** to close the chart and return to the breakdown list
+
 ---
 
 ## Adding a Transaction
